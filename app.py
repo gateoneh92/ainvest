@@ -181,42 +181,75 @@ def fmt_val(val, suffix="", multiplier=1, decimals=2):
 
 @st.cache_data(ttl=600)
 def fetch_price_and_fundamentals(ticker):
-    """Returns (price_dict, fundamentals_dict) or raises. Cached for 10 min."""
-    last_exc = None
-    for attempt in range(3):
-        try:
-            tkr  = yf.Ticker(ticker)
-            hist = tkr.history(period="5d")
-            if hist.empty:
-                raise ValueError("No price data")
+    """Returns (price_dict, fundamentals_dict). Cached for 10 min.
+    Price uses fast_info (single light request).
+    Fundamentals use tkr.info (optional — all N/A on any failure).
+    Never raises for rate limits so @st.cache_data always caches the result."""
+    from yfinance.exceptions import YFRateLimitError
+    tkr = yf.Ticker(ticker)
+
+    # ── Price via fast_info (single lightweight API call) ────────────────
+    price = None
+    try:
+        fi  = tkr.fast_info
+        cur = fi.last_price
+        if cur:
             price = {
-                "current":  float(hist["Close"].iloc[-1]),
-                "prev":     float(hist["Close"].iloc[-2]) if len(hist) >= 2 else float(hist["Close"].iloc[-1]),
-                "high":     float(hist["High"].iloc[-1]),
-                "low":      float(hist["Low"].iloc[-1]),
+                "current": float(cur),
+                "prev":    float(fi.regular_market_previous_close or cur),
+                "high":    float(fi.day_high or cur),
+                "low":     float(fi.day_low or cur),
             }
             price["change"]     = price["current"] - price["prev"]
             price["change_pct"] = price["change"] / price["prev"] * 100
+    except YFRateLimitError:
+        pass  # fall through to history fallback
+    except Exception:
+        pass  # fall through to history fallback
 
-            info = tkr.info
-            fund = {
-                "Market Cap":    fmt_val(info.get("marketCap")),
-                "P/E (TTM)":     fmt_val(info.get("trailingPE"),       decimals=1),
-                "Forward P/E":   fmt_val(info.get("forwardPE"),        decimals=1),
-                "P/B Ratio":     fmt_val(info.get("priceToBook"),      decimals=2),
-                "Revenue Growth":fmt_val(info.get("revenueGrowth"),    suffix="%", multiplier=100, decimals=1),
-                "Profit Margin": fmt_val(info.get("profitMargins"),    suffix="%", multiplier=100, decimals=1),
-                "ROE":           fmt_val(info.get("returnOnEquity"),   suffix="%", multiplier=100, decimals=1),
-                "Debt/Equity":   fmt_val(info.get("debtToEquity"),     decimals=2),
-            }
-            return price, fund
-        except Exception as e:
-            last_exc = e
-            if "429" in str(e) or "Too Many" in str(e) or "Rate" in str(e):
-                time.sleep(2 ** attempt)  # 1s → 2s → 4s
-                continue
-            raise
-    raise last_exc
+    # ── Fallback: history() if fast_info gave nothing ────────────────────
+    if price is None:
+        for attempt in range(3):
+            try:
+                hist = tkr.history(period="5d")
+                if hist.empty:
+                    raise ValueError(f"No price data found for '{ticker}'")
+                price = {
+                    "current": float(hist["Close"].iloc[-1]),
+                    "prev":    float(hist["Close"].iloc[-2]) if len(hist) >= 2 else float(hist["Close"].iloc[-1]),
+                    "high":    float(hist["High"].iloc[-1]),
+                    "low":     float(hist["Low"].iloc[-1]),
+                }
+                price["change"]     = price["current"] - price["prev"]
+                price["change_pct"] = price["change"] / price["prev"] * 100
+                break
+            except YFRateLimitError:
+                if attempt < 2:
+                    time.sleep(3 ** attempt)
+                    continue
+                raise  # re-raise on last attempt so caller sees it
+            except Exception:
+                raise
+
+    # ── Fundamentals via tkr.info (completely optional) ───────────────────
+    fund_keys = ["Market Cap", "P/E (TTM)", "Forward P/E", "P/B Ratio",
+                 "Revenue Growth", "Profit Margin", "ROE", "Debt/Equity"]
+    try:
+        info = tkr.info
+        fund = {
+            "Market Cap":     fmt_val(info.get("marketCap")),
+            "P/E (TTM)":      fmt_val(info.get("trailingPE"),     decimals=1),
+            "Forward P/E":    fmt_val(info.get("forwardPE"),      decimals=1),
+            "P/B Ratio":      fmt_val(info.get("priceToBook"),    decimals=2),
+            "Revenue Growth": fmt_val(info.get("revenueGrowth"),  suffix="%", multiplier=100, decimals=1),
+            "Profit Margin":  fmt_val(info.get("profitMargins"),  suffix="%", multiplier=100, decimals=1),
+            "ROE":            fmt_val(info.get("returnOnEquity"), suffix="%", multiplier=100, decimals=1),
+            "Debt/Equity":    fmt_val(info.get("debtToEquity"),   decimals=2),
+        }
+    except Exception:
+        fund = {k: "N/A" for k in fund_keys}
+
+    return price, fund
 
 @st.cache_data(ttl=3600)
 def search_ticker(query):
