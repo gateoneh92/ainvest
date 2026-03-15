@@ -110,6 +110,46 @@ tab1, tab2, tab3 = st.tabs(["📊 Single Stock", "💼 Portfolio", "📈 Backtes
 # HELPERS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def resolve_single(query, key_suffix=""):
+    """Resolve a company name or ticker string to a ticker symbol.
+    Shows a selectbox if multiple matches found. Returns ticker string or None."""
+    q = query.strip()
+    if not q:
+        return None
+    # Only skip search if the user explicitly typed an uppercase ticker (e.g. AAPL, BTC-USD)
+    if q == q.upper() and len(q) <= 8 and " " not in q:
+        return q.upper()
+    with st.spinner("Searching..."):
+        results = search_ticker(q)
+    if not results:
+        st.warning(f"No results found for '{q}'. Try a ticker symbol instead.")
+        return None
+    options = {f"{name} ({symbol})": symbol for symbol, name in results}
+    chosen  = st.selectbox("Select the stock you meant:", list(options.keys()), key=f"search_{key_suffix}")
+    if chosen:
+        ticker = options[chosen]
+        st.caption(f"✅ Resolved: **{ticker}**")
+        return ticker
+    return None
+
+def resolve_multi(raw_input):
+    """Resolve comma-separated company names/tickers to a list of ticker symbols.
+    Short tokens (<=6 chars, no spaces) are used directly.
+    Longer tokens are auto-resolved via Yahoo Finance (top result)."""
+    tokens  = [t.strip() for t in raw_input.split(",") if t.strip()]
+    tickers = []
+    for t in tokens:
+        if t == t.upper() and len(t) <= 8 and " " not in t:
+            tickers.append(t.upper())
+        else:
+            results = search_ticker(t)
+            if results:
+                tickers.append(results[0][0])  # take top result
+                st.caption(f"'{t}' → **{results[0][0]}** ({results[0][1]})")
+            else:
+                st.warning(f"Could not find ticker for '{t}', skipping.")
+    return tickers
+
 AGENTS_ORDER = [
     ("Warren",  "👴", "Warren Buffett",  "Value Investor"),
     ("Charlie", "🧠", "Charlie Munger",  "Mental Models"),
@@ -377,25 +417,8 @@ Pick any stock and let 6 legendary AI investors debate it using real news and fi
 
     st.markdown("<br>", unsafe_allow_html=True)
     custom = st.text_input("🔍 Search by ticker or company name", placeholder="e.g., Apple, NVDA, Tesla, Bitcoin", key="single_input")
-
     if custom:
-        query = custom.strip()
-        # If it looks like a ticker (short, no spaces), use directly
-        if len(query) <= 6 and " " not in query:
-            target_ticker = query.upper()
-        else:
-            # Search by company name
-            with st.spinner("Searching..."):
-                results = search_ticker(query)
-            if results:
-                options = {f"{name} ({symbol})": symbol for symbol, name in results}
-                chosen  = st.selectbox("Select the stock you meant:", list(options.keys()), key="search_result")
-                if chosen:
-                    target_ticker = options[chosen]
-                    st.caption(f"Resolved to: **{target_ticker}**")
-            else:
-                st.warning(f"No results found for '{query}'. Try a ticker symbol instead.")
-                target_ticker = None
+        target_ticker = resolve_single(custom, key_suffix="single")
 
     if target_ticker:
         st.markdown("---")
@@ -494,13 +517,13 @@ Enter several stocks at once and the AI will analyze each one, then suggest how 
     st.caption("Enter multiple tickers to get AI signals for each and suggested portfolio weights.")
 
     portfolio_input = st.text_input(
-        "Enter tickers separated by commas",
-        placeholder="e.g., AAPL, NVDA, TSLA, MSFT",
+        "Enter tickers or company names, separated by commas",
+        placeholder="e.g., Apple, NVDA, Tesla, Microsoft",
         key="portfolio_input"
     )
 
     if st.button("🚀 Analyze Portfolio", use_container_width=True, key="portfolio_btn"):
-        tickers = [t.strip().upper() for t in portfolio_input.split(",") if t.strip()]
+        tickers = resolve_multi(portfolio_input)
         if not tickers:
             st.warning("Enter at least one ticker.")
         elif len(tickers) > 6:
@@ -670,12 +693,14 @@ Each quarter, we check two things Warren Buffett, Peter Lynch, and others actual
 
     bt_col1, bt_col2, bt_col3 = st.columns([2, 1, 1])
     with bt_col1:
-        bt_ticker = st.text_input("Ticker", value="NVDA", key="bt_ticker").upper().strip()
+        bt_input = st.text_input("Ticker or company name", placeholder="e.g., NVDA, Apple, Tesla", key="bt_input")
     with bt_col2:
         bt_period = st.selectbox("Period", ["1y", "2y", "5y"], index=1)
     with bt_col3:
         st.markdown("<br>", unsafe_allow_html=True)
         run_bt = st.button("▶ Run Backtest", use_container_width=True)
+
+    bt_ticker = resolve_single(bt_input, key_suffix="bt") if bt_input else None
 
     if run_bt and bt_ticker:
         with st.spinner("Running backtest..."):
