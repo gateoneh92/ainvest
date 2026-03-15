@@ -336,6 +336,12 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+st.markdown("""
+<div style='text-align:center; margin-top:20px;'>
+    <img src="https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fainvest-jnpzmtom62rulztvu24d6c.streamlit.app&count_bg=%230079C1&title_bg=%23303030&icon=eye.svg&icon_color=%23FFFFFF&title=Today&edge_flat=true" alt="visitor count"/>
+</div>
+""", unsafe_allow_html=True)
+
 st.markdown("<br>", unsafe_allow_html=True)
 col1, col2, col3 = st.columns([1, 1.5, 1])
 with col2:
