@@ -96,7 +96,13 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ── 4. Tabs ───────────────────────────────────────────────────────────────────
+# ── 4. Language Selector ──────────────────────────────────────────────────────
+col_lang = st.columns([3, 1])[1]
+with col_lang:
+    lang = st.radio("🌐 Language", ["English", "한국어"], horizontal=True, label_visibility="collapsed", key="lang_radio")
+LANG = lang
+
+# ── 5. Tabs ───────────────────────────────────────────────────────────────────
 tab1, tab2, tab3 = st.tabs(["📊 Single Stock", "💼 Portfolio", "📈 Backtest"])
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -161,6 +167,23 @@ def fetch_price_and_fundamentals(ticker):
     }
     return price, fund
 
+@st.cache_data(ttl=3600)
+def search_ticker(query):
+    """Search Yahoo Finance by company name or ticker. Returns list of (symbol, name)."""
+    try:
+        url  = f"https://query1.finance.yahoo.com/v1/finance/search?q={query}&newsCount=0&listsCount=0"
+        resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
+        data = resp.json()
+        results = []
+        for q in data.get("quotes", [])[:6]:
+            if q.get("quoteType") in ["EQUITY", "ETF", "CRYPTOCURRENCY"]:
+                symbol = q.get("symbol", "")
+                name   = q.get("shortname") or q.get("longname") or symbol
+                results.append((symbol, name))
+        return results
+    except Exception:
+        return []
+
 @st.cache_data(ttl=300)
 def fetch_chart_history(ticker, period="6mo"):
     return yf.Ticker(ticker).history(period=period)
@@ -173,9 +196,14 @@ def fetch_news(ticker):
     items = soup.find_all("item")
     return "\n".join(f"- {it.title.text}" for it in items[:10])
 
-def run_ai_debate(ticker, news_texts, fund):
-    fund_text = "Key financial data:\n" + "\n".join(
+def run_ai_debate(ticker, news_texts, fund, language="English"):
+    fund_text   = "Key financial data:\n" + "\n".join(
         f"- {k}: {v}" for k, v in fund.items() if v != "N/A"
+    )
+    lang_instruction = (
+        "Write all reasoning, action, and rationale fields in Korean (한국어)."
+        if language == "한국어" else
+        "Write all reasoning, action, and rationale fields in English."
     )
     prompt = f"""
 You are simulating a live investment committee debate about '{ticker}'.
@@ -183,6 +211,8 @@ Latest news headlines:
 {news_texts}
 
 {fund_text}
+
+{lang_instruction}
 
 Return ONLY a valid JSON object with this exact structure (no extra text):
 {{
@@ -327,9 +357,26 @@ Pick any stock and let 6 legendary AI investors debate it using real news and fi
     if c5.button("📦 AMZN", use_container_width=True): target_ticker = "AMZN"
 
     st.markdown("<br>", unsafe_allow_html=True)
-    custom = st.text_input("🔍 Search any ticker (Press Enter)", placeholder="e.g., GOOGL, META, MSTR, BTC-USD", key="single_input")
+    custom = st.text_input("🔍 Search by ticker or company name", placeholder="e.g., Apple, NVDA, Tesla, Bitcoin", key="single_input")
+
     if custom:
-        target_ticker = custom.upper().strip()
+        query = custom.strip()
+        # If it looks like a ticker (short, no spaces), use directly
+        if len(query) <= 6 and " " not in query:
+            target_ticker = query.upper()
+        else:
+            # Search by company name
+            with st.spinner("Searching..."):
+                results = search_ticker(query)
+            if results:
+                options = {f"{name} ({symbol})": symbol for symbol, name in results}
+                chosen  = st.selectbox("Select the stock you meant:", list(options.keys()), key="search_result")
+                if chosen:
+                    target_ticker = options[chosen]
+                    st.caption(f"Resolved to: **{target_ticker}**")
+            else:
+                st.warning(f"No results found for '{query}'. Try a ticker symbol instead.")
+                target_ticker = None
 
     if target_ticker:
         st.markdown("---")
@@ -371,7 +418,7 @@ Pick any stock and let 6 legendary AI investors debate it using real news and fi
         with st.spinner("Convening the AI Hedge Fund Panel... ⏳"):
             try:
                 news   = fetch_news(target_ticker)
-                result = run_ai_debate(target_ticker, news, fund)
+                result = run_ai_debate(target_ticker, news, fund, LANG)
                 render_consensus(target_ticker, result)
                 render_agent_cards(result)
                 render_verdict(result)
@@ -449,11 +496,13 @@ Enter several stocks at once and the AI will analyze each one, then suggest how 
                     price, fund = fetch_price_and_fundamentals(ticker)
                     news = fetch_news(ticker)
                     # Lightweight single-signal prompt
-                    fund_text = "\n".join(f"- {k}: {v}" for k, v in fund.items() if v != "N/A")
+                    fund_text   = "\n".join(f"- {k}: {v}" for k, v in fund.items() if v != "N/A")
+                    lang_note   = "Write the summary field in Korean (한국어)." if LANG == "한국어" else "Write the summary field in English."
                     prompt = f"""
 Analyze '{ticker}' as a portfolio manager.
 News: {news[:500]}
 Financials: {fund_text}
+{lang_note}
 Return JSON: {{"signal": "BULLISH|BEARISH|NEUTRAL", "confidence": <1-100>, "summary": "<1 sentence rationale>", "verdict": "BUY|SELL|HOLD"}}
 """
                     client = OpenAI(api_key=OPENAI_API_KEY)
