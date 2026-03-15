@@ -46,10 +46,10 @@ st.markdown("""
     .badge-bear { background: #ff525222; color: #ff5252; border: 1px solid #ff5252; }
     .badge-neut { background: #ffd74022; color: #ffd740; border: 1px solid #ffd740; }
 
-    .agent-card { background: #16213e; border-radius: 14px; padding: 20px 22px; margin-bottom: 16px; border-left: 4px solid #0f3460; border: 1px solid #1e2d50; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
-    .agent-card-bull { border-left: 4px solid #00e676; border-color: #00e67633; }
-    .agent-card-bear { border-left: 4px solid #ff5252; border-color: #ff525233; }
-    .agent-card-neut { border-left: 4px solid #ffd740; border-color: #ffd74033; }
+    .agent-card { background: #16213e; border-radius: 14px; padding: 20px 22px; margin-bottom: 16px; border-left: 4px solid #0f3460; }
+    .agent-card-bull { border-left-color: #00e676; }
+    .agent-card-bear { border-left-color: #ff5252; }
+    .agent-card-neut { border-left-color: #ffd740; }
     .agent-name { color: #fff; font-size: 1rem; font-weight: 700; margin-bottom: 6px; }
     .agent-conf { color: #aaa; font-size: 0.8rem; margin-bottom: 10px; }
     .agent-text { color: #ccc; font-size: 0.88rem; line-height: 1.6; }
@@ -85,14 +85,6 @@ st.markdown("""
 <div class="app-header">
     <h1>👋 HaiInvestor</h1>
     <p>New to investing? Just pick a stock — 6 legendary AI investors will debate it for you.</p>
-    <div style="margin-top:14px; display:flex; justify-content:center; gap:10px; flex-wrap:wrap;">
-        <span style="background:#ffffff11; border:1px solid #ffffff22; border-radius:20px; padding:4px 12px; font-size:0.78rem; color:#ccc;">👴 Warren Buffett</span>
-        <span style="background:#ffffff11; border:1px solid #ffffff22; border-radius:20px; padding:4px 12px; font-size:0.78rem; color:#ccc;">🧠 Charlie Munger</span>
-        <span style="background:#ffffff11; border:1px solid #ffffff22; border-radius:20px; padding:4px 12px; font-size:0.78rem; color:#ccc;">🐻 Michael Burry</span>
-        <span style="background:#ffffff11; border:1px solid #ffffff22; border-radius:20px; padding:4px 12px; font-size:0.78rem; color:#ccc;">🏃 Peter Lynch</span>
-        <span style="background:#ffffff11; border:1px solid #ffffff22; border-radius:20px; padding:4px 12px; font-size:0.78rem; color:#ccc;">🚀 Cathie Wood</span>
-        <span style="background:#ffffff11; border:1px solid #ffffff22; border-radius:20px; padding:4px 12px; font-size:0.78rem; color:#ccc;">⚔️ Bill Ackman</span>
-    </div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -375,26 +367,6 @@ Pick any stock and let 6 legendary AI investors debate it using real news and fi
                 render_consensus(target_ticker, result)
                 render_agent_cards(result)
                 render_verdict(result)
-
-                # ── Share button ─────────────────────────────────────────────
-                mgr     = result.get("Manager", {})
-                verdict = mgr.get("verdict", "HOLD")
-                v_emoji = {"BUY": "📗", "SELL": "📕"}.get(verdict, "📒")
-                tweet   = (
-                    f"I just ran ${target_ticker} through 6 legendary AI investors on HaiInvestor.\n\n"
-                    f"Verdict: {v_emoji} {verdict}\n\n"
-                    f"Try it yourself 👇\nhttps://ainvest-jnpzmtom62rulztvu24d6c.streamlit.app"
-                )
-                tweet_url = f"https://twitter.com/intent/tweet?text={requests.utils.quote(tweet)}"
-                st.markdown(f"""
-<div style="text-align:center; margin-top:24px;">
-    <a href="{tweet_url}" target="_blank"
-       style="background:#1DA1F2; color:white; padding:10px 24px; border-radius:20px;
-              text-decoration:none; font-weight:700; font-size:0.9rem;">
-        🐦 Share on X (Twitter)
-    </a>
-</div>
-""", unsafe_allow_html=True)
             except Exception as e:
                 st.error(f"An error occurred: {e}")
 
@@ -540,26 +512,6 @@ Return JSON: {{"signal": "BULLISH|BEARISH|NEUTRAL", "confidence": <1-100>, "summ
                 st.plotly_chart(fig_pie, use_container_width=True)
             else:
                 st.info("No BULLISH signals — consider waiting for a better entry point.")
-
-            # ── Share button ─────────────────────────────────────────────────
-            ticker_list = ", ".join(f"${r['ticker']}" for r in results_list)
-            buy_list    = ", ".join(f"${r['ticker']}" for r in results_list if r["verdict"] == "BUY") or "none"
-            tweet = (
-                f"I just analyzed a portfolio with HaiInvestor AI 📊\n\n"
-                f"Tickers: {ticker_list}\n"
-                f"AI says BUY: {buy_list}\n\n"
-                f"Try it yourself 👇\nhttps://ainvest-jnpzmtom62rulztvu24d6c.streamlit.app"
-            )
-            tweet_url = f"https://twitter.com/intent/tweet?text={requests.utils.quote(tweet)}"
-            st.markdown(f"""
-<div style="text-align:center; margin-top:24px;">
-    <a href="{tweet_url}" target="_blank"
-       style="background:#1DA1F2; color:white; padding:10px 24px; border-radius:20px;
-              text-decoration:none; font-weight:700; font-size:0.9rem;">
-        🐦 Share on X (Twitter)
-    </a>
-</div>
-""", unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 3 — BACKTEST
@@ -751,14 +703,12 @@ except Exception:
     count = "—"
 
 st.markdown(f"""
-<div style='text-align:center; margin:16px 0 4px; color:#555; font-size:0.78rem;'>
-    🧪 Beta Users: <b style='color:#666;'>{count}</b>
+<div style='text-align:center; margin:16px 0 8px; color:#aaa; font-size:0.85rem;'>
+    👁️ Total Visitors &nbsp;<span style='color:#fff; font-weight:700; font-size:1rem;'>{count}</span>
 </div>
 """, unsafe_allow_html=True)
 
-with st.expander("😤 Hate this app?", expanded=False):
-    st.markdown(
-        "Think our AI panel is full of garbage? **Pay $1 and leave your best insult in the PayPal note.** I'll read every single one.",
-        unsafe_allow_html=False
-    )
-    st.link_button("💸 Pay $1 to Insult Me", "https://www.paypal.com/ncp/payment/A3Q3JEV6WRXSG", use_container_width=False)
+st.markdown("<br>", unsafe_allow_html=True)
+col1, col2, col3 = st.columns([1, 1.5, 1])
+with col2:
+    st.link_button("💸 Pay $1 to Insult Me", "https://www.paypal.com/ncp/payment/A3Q3JEV6WRXSG", use_container_width=True)
